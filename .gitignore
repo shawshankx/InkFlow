@@ -1,0 +1,34 @@
+# =====================
+# 1. 前端 (Node.js/React)
+# =====================
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+.env.local
+
+# =====================
+# 2. 后端 (Go)
+# =====================
+# 忽略编译后的二进制文件
+*.exe
+*.dll
+backend/inkflow-server
+backend/main
+
+# =====================
+# 3. Docker & 数据 (重要!)
+# =====================
+# 忽略 Docker 挂载的本地数据库文件
+data/
+mysql_data/
+
+# =====================
+# 4. 系统 & IDE
+# =====================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+.env
