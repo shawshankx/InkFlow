@@ -17,6 +17,7 @@ services:
       # AI 配置 (填你的 Key)
       - AI_API_KEY=${AI_API_KEY}
       - AI_BASE_URL=${AI_BASE_URL}
+      - AI_MODEL_NAME=${AI_MODEL_NAME}
     depends_on:
       - mysql
 

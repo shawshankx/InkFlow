@@ -51,7 +51,7 @@ function App() {
     }
   };
 
-  // API 4: 【新增】删除笔记
+  // API 4: 删除笔记
   const handleDelete = async () => {
     if (!confirm(`确定要删除 "${title}" 吗？此操作不可恢复。`)) return;
 
@@ -71,38 +71,67 @@ function App() {
     }
   };
 
-  // API 5: AI 润色
+  // API 5: AI 润色 (修复版：兼容 JSON 和 Stream)
   const handlePolish = async () => {
+    if (!content.trim()) {
+      alert("请先输入一些内容");
+      return;
+    }
+
     setLoading(true);
+    setContent(""); // 清空准备接收
+
     try {
       const response = await fetch('/api/ai/polish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // 🔥 判断是 JSON 还是 Stream
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        // === 方式 A: 普通 JSON ===
+        const data = await response.json();
+        const text = data.content || data.message || (data.choices && data.choices[0].message.content) || "";
+        setContent(text);
+        return; 
+      }
+
+      // === 方式 B: 流式 Stream ===
       if (!response.body) return;
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let newText = "";
-      setContent(""); 
+      let buffer = "";
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+        
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ""; // 保留未完成的行
+
         for (const line of lines) {
-            if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
                 try {
-                    const json = JSON.parse(line.replace('data: ', ''));
-                    const token = json.choices[0]?.delta?.content || "";
-                    newText += token;
-                    setContent(prev => prev + token);
-                } catch (e) {}
+                    const json = JSON.parse(trimmed.replace('data: ', ''));
+                    const token = json.choices?.[0]?.delta?.content || "";
+                    if (token) setContent(prev => prev + token);
+                } catch (e) { console.error(e); }
             }
         }
       }
+
     } catch (err) {
-      alert("AI 服务出错");
+      console.error(err);
+      alert("AI 服务连接失败");
     } finally {
       setLoading(false);
     }
@@ -170,7 +199,6 @@ function App() {
             <Save size={16}/> 保存
           </button>
 
-          {/* 新增：删除按钮 */}
           <button onClick={handleDelete} title="删除当前笔记" style={{display:'flex', alignItems:'center', gap:'5px', padding:'8px 16px', background:'#ef4444', color:'white', border:'none', borderRadius:'6px', cursor:'pointer'}}>
             <Trash2 size={16}/>
           </button>
