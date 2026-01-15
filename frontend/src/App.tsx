@@ -1,24 +1,36 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { 
   Sparkles, Save, FileText, Plus, Trash2, 
   Download, Upload, CheckSquare, Square, X, 
-  RotateCcw // <--- 新增撤回图标
+  RotateCcw, Folder, FolderOpen, ChevronRight, ChevronDown // <--- 新增图标
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
+// 🔥 定义笔记的数据结构
+interface NoteItem {
+  title: string;
+  folder: string;
+}
+
 function App() {
   const [content, setContent] = useState("# 新建笔记\n\n开始你的创作...");
   const [title, setTitle] = useState("未命名笔记");
+  const [folder, setFolder] = useState(""); // 🔥 当前笔记的文件夹状态
   const [loading, setLoading] = useState(false);
-  const [notesList, setNotesList] = useState<string[]>([]);
   
+  // 🔥 列表状态改为对象数组
+  const [notesList, setNotesList] = useState<NoteItem[]>([]);
+  
+  // 🔥 折叠状态：记录哪些文件夹是展开的 (默认展开根目录)
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set([''])); 
+
   // === 批量操作状态 ===
   const [isBatchMode, setIsBatchMode] = useState(false);
-  const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set());
+  const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set()); // 存 "title" (假设暂时按标题唯一选，或者联合key)
   
-  // === 🔥 撤回状态：存放 AI 润色前的旧内容 ===
+  // === 撤回状态 ===
   const [historyContent, setHistoryContent] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -27,11 +39,32 @@ function App() {
     fetchNotesList();
   }, []);
 
+  // --- 辅助函数：计算分组 ---
+  const groupedNotes = useMemo(() => {
+    const groups: Record<string, NoteItem[]> = {};
+    notesList.forEach(note => {
+      const f = note.folder || ""; // 空字符串代表根目录
+      if (!groups[f]) groups[f] = [];
+      groups[f].push(note);
+    });
+    return groups;
+  }, [notesList]);
+
+  const toggleFolder = (folderName: string) => {
+    const newSet = new Set(expandedFolders);
+    if (newSet.has(folderName)) newSet.delete(folderName);
+    else newSet.add(folderName);
+    setExpandedFolders(newSet);
+  };
+
+  // --- API 操作 ---
+
   // API: 获取列表
   const fetchNotesList = async () => {
     try {
       const res = await fetch('/api/notes');
       const data = await res.json();
+      // data 应该是 [{title: "A", folder: "Work"}, ...]
       setNotesList(data || []);
     } catch (e) {
       console.error("加载列表失败", e);
@@ -39,39 +72,47 @@ function App() {
   };
 
   // API: 加载单个笔记
-  const loadNote = async (noteTitle: string) => {
+  const loadNote = async (noteTitle: string, noteFolder: string) => {
     if (isBatchMode) {
-      toggleNoteSelection(noteTitle);
+      toggleNoteSelection(noteTitle); // 批量模式下只负责选中
       return;
     }
     try {
-      const res = await fetch(`/api/notes/content?title=${encodeURIComponent(noteTitle)}`);
+      // 🔥 URL 增加 folder 参数
+      const res = await fetch(`/api/notes/content?title=${encodeURIComponent(noteTitle)}&folder=${encodeURIComponent(noteFolder)}`);
       const data = await res.json();
       setTitle(data.title);
+      setFolder(data.folder || ""); // 更新文件夹状态
       setContent(data.content);
-      setHistoryContent(null); // 切换笔记时，清空撤回历史
+      setHistoryContent(null);
     } catch (e) {
       alert("加载笔记失败");
     }
   };
 
   // API: 保存笔记
-  const handleSave = async (customTitle?: string, customContent?: string) => {
+  const handleSave = async (customTitle?: string, customContent?: string, customFolder?: string) => {
     const targetTitle = customTitle || title;
+    const targetFolder = customFolder !== undefined ? customFolder : folder;
     const targetContent = customContent !== undefined ? customContent : content;
 
     if (!targetTitle.trim()) { alert("请输入标题"); return; }
     
+    // 🔥 Body 增加 folder
     const res = await fetch('/api/notes', {
         method: 'POST',
-        body: JSON.stringify({ title: targetTitle, content: targetContent })
+        body: JSON.stringify({ 
+          title: targetTitle, 
+          folder: targetFolder, 
+          content: targetContent 
+        })
     });
     
     if (!customTitle) {
       if (res.ok) {
         alert("✅ 保存成功!");
-        setHistoryContent(null); // 保存后，确认修改，清空撤回历史
-        fetchNotesList();
+        setHistoryContent(null);
+        fetchNotesList(); // 刷新列表以更新文件夹结构
       } else {
         alert("❌ 保存失败");
       }
@@ -81,27 +122,24 @@ function App() {
   // API: 删除单条
   const handleDelete = async () => {
     if (!confirm(`确定要删除 "${title}" 吗？此操作不可恢复。`)) return;
-    await deleteNoteAPI(title);
+    await deleteNoteAPI(title, folder);
     alert("🗑️ 删除成功");
     handleNew();
     fetchNotesList();
   };
 
-  const deleteNoteAPI = async (noteTitle: string) => {
-    return fetch(`/api/notes?title=${encodeURIComponent(noteTitle)}`, {
+  // 封装删除 API (带 folder)
+  const deleteNoteAPI = async (noteTitle: string, noteFolder: string) => {
+    return fetch(`/api/notes?title=${encodeURIComponent(noteTitle)}&folder=${encodeURIComponent(noteFolder)}`, {
       method: 'DELETE'
     });
   };
 
-  // API: AI 润色
+  // API: AI 润色 (保持不变)
   const handlePolish = async () => {
     if (!content.trim()) { alert("请先输入一些内容"); return; }
-    
-    // 🔥 关键：在润色前，先把当前内容存起来！
     setHistoryContent(content);
-
     setLoading(true);
-    
     try {
       const response = await fetch('/api/ai/polish', {
         method: 'POST',
@@ -111,7 +149,6 @@ function App() {
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-      // 方式 A: JSON
       const contentType = response.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
         const data = await response.json();
@@ -120,7 +157,6 @@ function App() {
         return; 
       }
 
-      // 方式 B: Stream
       setContent(""); 
       if (!response.body) return;
       const reader = response.body.getReader();
@@ -149,22 +185,19 @@ function App() {
     } catch (err) {
       console.error(err);
       alert("AI 服务连接失败");
-      // 如果失败了，自动恢复（可选）
-      // if (historyContent) setContent(historyContent);
     } finally {
       setLoading(false);
     }
   };
 
-  // 🔥 撤回 AI 修改
   const handleUndoAI = () => {
     if (historyContent !== null) {
       setContent(historyContent);
-      setHistoryContent(null); // 撤回后，清空历史
+      setHistoryContent(null);
     }
   };
 
-  // ... 批量操作区域 (保持不变) ...
+  // --- 批量操作区域 ---
   const toggleBatchMode = () => {
     setIsBatchMode(!isBatchMode);
     setSelectedNotes(new Set());
@@ -177,14 +210,24 @@ function App() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedNotes.size === notesList.length) { setSelectedNotes(new Set()); } else { setSelectedNotes(new Set(notesList)); }
+    if (selectedNotes.size === notesList.length) { 
+      setSelectedNotes(new Set()); 
+    } else { 
+      // 选中所有笔记的标题
+      setSelectedNotes(new Set(notesList.map(n => n.title))); 
+    }
   };
 
   const handleBatchDelete = async () => {
     if (selectedNotes.size === 0) return;
     if (!confirm(`确定要删除选中的 ${selectedNotes.size} 篇笔记吗？`)) return;
+    
+    // 遍历选中的标题，找到对应的 folder，然后删除
     for (const noteTitle of selectedNotes) {
-      try { await deleteNoteAPI(noteTitle); } catch (e) {}
+      const noteItem = notesList.find(n => n.title === noteTitle);
+      if (noteItem) {
+        try { await deleteNoteAPI(noteTitle, noteItem.folder); } catch (e) {}
+      }
     }
     alert(`批量删除完成`);
     setSelectedNotes(new Set());
@@ -197,17 +240,24 @@ function App() {
     if (selectedNotes.size === 0) { alert("请至少选择一篇笔记"); return; }
     const zip = new JSZip();
     let count = 0;
+    
     for (const noteTitle of selectedNotes) {
-      try {
-        const res = await fetch(`/api/notes/content?title=${encodeURIComponent(noteTitle)}`);
-        const data = await res.json();
-        zip.file(`${data.title}.md`, data.content);
-        count++;
-      } catch (e) {}
+      const noteItem = notesList.find(n => n.title === noteTitle);
+      if (noteItem) {
+        try {
+          const res = await fetch(`/api/notes/content?title=${encodeURIComponent(noteTitle)}&folder=${encodeURIComponent(noteItem.folder)}`);
+          const data = await res.json();
+          // 🔥 导出时保留文件夹结构
+          const path = data.folder ? `${data.folder}/${data.title}.md` : `${data.title}.md`;
+          zip.file(path, data.content);
+          count++;
+        } catch (e) {}
+      }
     }
+    
     if (count > 0) {
       const content = await zip.generateAsync({ type: "blob" });
-      saveAs(content, `inkflow_export_${new Date().toISOString().slice(0,10)}.zip`);
+      saveAs(content, `inkflow_notes.zip`);
     }
   };
 
@@ -226,9 +276,10 @@ function App() {
         reader.readAsText(file);
       });
       if (text) {
+        // 导入时默认 folder 为空 (根目录)，或者你可以改成当前 folder
         await fetch('/api/notes', {
           method: 'POST',
-          body: JSON.stringify({ title: fileName, content: text })
+          body: JSON.stringify({ title: fileName, folder: "", content: text })
         });
         successCount++;
       }
@@ -238,10 +289,31 @@ function App() {
     event.target.value = ''; 
   };
 
+  // 🔥 新建文件夹 (其实是创建该文件夹下的第一个笔记)
+  const handleNewFolder = async () => {
+    const name = prompt("请输入新文件夹名称:");
+    if (!name) return; // 用户点了取消
+
+    // 1. 生成一个临时的标题
+    const tempTitle = "新笔记-" + Date.now();
+    const tempContent = `# ${name}\n这是该文件夹下的第一个笔记`;
+
+    // 2. 更新前端状态 (让输入框立刻变更为新文件夹)
+    handleNew(); 
+    setFolder(name);
+    setTitle(tempTitle);
+    setContent(tempContent);
+
+    // 3. 🔥 关键：立即调用保存接口！
+    // 只有保存成功，数据库里有了这条记录，文件夹才会真正创建成功
+    await handleSave(tempTitle, tempContent, name);
+  }
+
   const handleNew = () => {
     setTitle("新笔记-" + Date.now());
+    setFolder(""); // 默认回到根目录
     setContent("");
-    setHistoryContent(null); // 新建时清空历史
+    setHistoryContent(null);
     setIsBatchMode(false);
   };
 
@@ -254,28 +326,29 @@ function App() {
     <div style={{ display: 'flex', height: '100vh', width: '100vw', background: '#f9fafb' }}>
       <input type="file" multiple ref={fileInputRef} onChange={handleFileChange} accept=".md,.txt" style={{ display: 'none' }} />
 
-      {/* 左侧侧边栏 */}
-      <div style={{ width: '250px', background: '#fff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column' }}>
+      {/* === 左侧侧边栏 (树形结构) === */}
+      <div style={{ width: '260px', background: '#fff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '15px', borderBottom: '1px solid #e5e7eb', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold' }}>{isBatchMode ? `已选 ${selectedNotes.size} 项` : "📚 我的笔记"}</h2>
+          <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold' }}>{isBatchMode ? `已选 ${selectedNotes.size}` : "🗂️ 笔记本"}</h2>
           <div style={{display:'flex', gap:'5px'}}>
             <button onClick={toggleBatchMode} title={isBatchMode ? "退出批量" : "批量管理"} style={{border:'none', background: isBatchMode ? '#fee2e2' : 'transparent', color: isBatchMode ? '#ef4444' : '#666', cursor:'pointer', padding:'5px', borderRadius:'4px'}}>
               {isBatchMode ? <X size={18} /> : <CheckSquare size={18} />}
             </button>
+            <button onClick={handleNewFolder} title="新建文件夹" style={{border:'none', background:'transparent', cursor:'pointer', color:'#666', padding:'5px'}}>
+              <FolderOpen size={18} />
+            </button>
             {!isBatchMode && (
-              <button onClick={handleNew} title="新建" style={{border:'none', background:'transparent', cursor:'pointer', color:'#666', padding:'5px'}}>
+              <button onClick={handleNew} title="新建笔记" style={{border:'none', background:'transparent', cursor:'pointer', color:'#666', padding:'5px'}}>
                 <Plus size={18} />
               </button>
             )}
           </div>
         </div>
 
-        {/* 批量操作条 */}
+        {/* 批量操作工具栏 */}
         {isBatchMode && (
           <div style={{ padding: '10px', background: '#f3f4f6', borderBottom: '1px solid #e5e7eb', display:'flex', gap:'5px', justifyContent:'space-between' }}>
-            <button onClick={toggleSelectAll} style={{fontSize:'12px', padding:'5px 8px', border:'1px solid #ddd', borderRadius:'4px', cursor:'pointer', background:'white'}}>
-              {selectedNotes.size === notesList.length ? '取消' : '全选'}
-            </button>
+            <button onClick={toggleSelectAll} style={{fontSize:'12px', padding:'5px 8px', border:'1px solid #ddd', borderRadius:'4px', cursor:'pointer', background:'white'}}>全选</button>
             <div style={{display:'flex', gap:'5px'}}>
               <button onClick={handleBatchExport} title="导出选中" style={{border:'1px solid #ddd', background:'white', cursor:'pointer', padding:'5px', borderRadius:'4px', color:'#374151'}}><Download size={14} /></button>
               <button onClick={handleBatchDelete} title="删除选中" style={{border:'1px solid #ef4444', background:'#fff', cursor:'pointer', padding:'5px', borderRadius:'4px', color:'#ef4444'}}><Trash2 size={14} /></button>
@@ -283,35 +356,70 @@ function App() {
           </div>
         )}
 
+        {/* 树形列表渲染 */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
-          {notesList.map(name => {
-            const isSelected = selectedNotes.has(name);
-            const isCurrent = title === name;
+          {/* 1. 遍历所有非空文件夹 */}
+          {Object.entries(groupedNotes).map(([groupName, notes]) => {
+            const isRoot = groupName === "";
+            if (isRoot) return null; // 根目录稍后单独渲染
+
+            const isExpanded = expandedFolders.has(groupName);
+            
             return (
-              <div key={name} onClick={() => loadNote(name)} style={{
-                padding: '10px 15px', cursor: 'pointer', borderRadius: '6px', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '8px',
-                background: (isBatchMode && isSelected) ? '#eff6ff' : (isCurrent && !isBatchMode ? '#f3f4f6' : 'transparent'),
-                color: (isCurrent || isSelected) ? '#2563eb' : '#374151',
-                border: (isBatchMode && isSelected) ? '1px solid #bfdbfe' : '1px solid transparent'
-              }}>
-                {isBatchMode ? (isSelected ? <CheckSquare size={16} color="#2563eb"/> : <Square size={16} color="#9ca3af"/>) : <FileText size={16} />}
-                <span style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontSize:'14px'}}>{name}</span>
+              <div key={groupName} style={{ marginBottom: '5px' }}>
+                {/* 文件夹标题 */}
+                <div 
+                  onClick={() => toggleFolder(groupName)}
+                  style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '8px', color: '#4b5563', fontWeight: '600', fontSize:'14px' }}
+                >
+                  {isExpanded ? <ChevronDown size={14} style={{marginRight:5}}/> : <ChevronRight size={14} style={{marginRight:5}}/>}
+                  <Folder size={16} style={{marginRight: 6, fill: '#fbbf24', stroke: '#d97706'}}/>
+                  {groupName}
+                </div>
+                
+                {/* 文件夹下的笔记 */}
+                {isExpanded && (
+                  <div style={{ paddingLeft: '20px', borderLeft: '2px solid #f3f4f6', marginLeft: '9px' }}>
+                    {notes.map(note => <NoteListItem key={note.title + note.folder} note={note} />)}
+                  </div>
+                )}
               </div>
             );
           })}
+
+          {/* 2. 渲染根目录 (未分类) 的笔记 */}
+          {groupedNotes[""] && (
+            <div style={{ marginTop: '10px' }}>
+               {Object.keys(groupedNotes).length > 1 && <div style={{fontSize:'12px', color:'#999', padding:'5px 8px', fontWeight:'bold'}}>未分类</div>}
+               {groupedNotes[""].map(note => <NoteListItem key={note.title} note={note} />)}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 右侧主区域 */}
+      {/* === 右侧主区域 === */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '15px 20px', background: 'white', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="请输入标题..." disabled={isBatchMode} style={{ fontSize: '20px', border:'none', outline:'none', fontWeight:'bold', flex: 1, color: isBatchMode ? '#999' : '#000' }} />
           
-          <button onClick={handleImportClick} title="导入" style={{display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background:'#f3f4f6', color:'#374151', border:'none', borderRadius:'6px', cursor:'pointer'}}><Upload size={16}/> 导入</button>
-          <button onClick={handleSingleExport} title="导出" style={{display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background:'#f3f4f6', color:'#374151', border:'none', borderRadius:'6px', cursor:'pointer'}}><Download size={16}/> 导出</button>
+          {/* 🔥 文件夹输入框 (用于移动笔记) */}
+          <div style={{display:'flex', alignItems:'center', background:'#f3f4f6', padding:'0 10px', borderRadius:'6px', height:'40px'}}>
+             <Folder size={16} color="#666"/>
+             <input 
+                value={folder} 
+                onChange={e => setFolder(e.target.value)} 
+                placeholder="文件夹..." 
+                disabled={isBatchMode}
+                style={{ width:'80px', border:'none', background:'transparent', outline:'none', marginLeft:'5px', fontSize:'14px', color:'#4b5563' }}
+                title="输入文件夹名称，保存即可移动"
+             />
+          </div>
+
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="标题..." disabled={isBatchMode} style={{ fontSize: '20px', border:'none', outline:'none', fontWeight:'bold', flex: 1, color: isBatchMode ? '#999' : '#000' }} />
+          
+          <button onClick={handleImportClick} title="导入" style={{display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background:'#f3f4f6', color:'#374151', border:'none', borderRadius:'6px', cursor:'pointer'}}><Upload size={16}/></button>
+          <button onClick={handleSingleExport} title="导出" style={{display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background:'#f3f4f6', color:'#374151', border:'none', borderRadius:'6px', cursor:'pointer'}}><Download size={16}/></button>
           <div style={{width: '1px', height: '24px', background:'#e5e7eb', margin:'0 5px'}}></div>
 
-          {/* 🔥 撤回按钮：只有当 historyContent 有值时才显示 */}
           {historyContent !== null && (
             <button onClick={handleUndoAI} title="撤回 AI 润色" style={{display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background:'#f59e0b', color:'white', border:'none', borderRadius:'6px', cursor:'pointer'}}>
               <RotateCcw size={16}/> 撤回
@@ -338,6 +446,28 @@ function App() {
       </div>
     </div>
   );
+
+  // 🔥 子组件：渲染单个笔记项
+  function NoteListItem({ note }: { note: NoteItem }) {
+    const isSelected = selectedNotes.has(note.title);
+    // 判断当前选中高亮：同时匹配标题和文件夹
+    const isCurrent = title === note.title && folder === (note.folder || "");
+
+    return (
+      <div 
+        onClick={() => loadNote(note.title, note.folder)}
+        style={{
+          padding: '8px 12px', cursor: 'pointer', borderRadius: '6px', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '8px',
+          background: (isBatchMode && isSelected) ? '#eff6ff' : (isCurrent && !isBatchMode ? '#f3f4f6' : 'transparent'),
+          color: (isCurrent || isSelected) ? '#2563eb' : '#374151',
+          border: (isBatchMode && isSelected) ? '1px solid #bfdbfe' : '1px solid transparent'
+        }}
+      >
+        {isBatchMode ? (isSelected ? <CheckSquare size={14} color="#2563eb"/> : <Square size={14} color="#9ca3af"/>) : <FileText size={14} />}
+        <span style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontSize:'13px'}}>{note.title}</span>
+      </div>
+    );
+  }
 }
 
 export default App;

@@ -1,7 +1,7 @@
 package store
 
 import (
-	"ai-notes/internal/model"
+	"ai-notes/internal/model" // 请确认你的 go.mod 包名
 	"fmt"
 	"log"
 
@@ -23,7 +23,7 @@ func NewMySQLStore(user, password, host, port, dbName string) *Store {
 		log.Fatal("连接数据库失败:", err)
 	}
 
-	// 自动迁移模式：自动创建表结构
+	// 自动迁移模式：自动创建表结构 (会自动添加 folder 字段)
 	err = db.AutoMigrate(&model.Note{})
 	if err != nil {
 		log.Fatal("数据库迁移失败:", err)
@@ -32,51 +32,62 @@ func NewMySQLStore(user, password, host, port, dbName string) *Store {
 	return &Store{DB: db}
 }
 
-// 保存笔记 (Upsert: 如果标题存在则更新，不存在则创建)
-func (s *Store) SaveNote(title, content string) error {
+// 🔥 修改 1: SaveNote 增加 folder 参数
+// 逻辑：同时检查 title 和 folder 确定唯一性
+func (s *Store) SaveNote(title, folder, content string) error {
 	var note model.Note
-	// 查找是否存在
-	result := s.DB.Where("title = ?", title).First(&note)
-	
+	// 查找是否存在 (必须 Title 和 Folder 都匹配)
+	result := s.DB.Where("title = ? AND folder = ?", title, folder).First(&note)
+
 	if result.Error == nil {
-		// 存在 -> 更新
+		// 存在 -> 更新内容
 		note.Content = content
 		return s.DB.Save(&note).Error
 	} else {
-		// 不存在 -> 创建
-		newNote := model.Note{Title: title, Content: content}
+		// 不存在 -> 创建新笔记
+		newNote := model.Note{
+			Title:   title,
+			Folder:  folder, // 存入文件夹
+			Content: content,
+		}
 		return s.DB.Create(&newNote).Error
 	}
 }
 
-// 获取单个笔记
-func (s *Store) GetNote(title string) (string, error) {
+// 🔥 修改 2: GetNote 增加 folder 参数
+func (s *Store) GetNote(title, folder string) (string, error) {
 	var note model.Note
-	result := s.DB.Where("title = ?", title).First(&note)
+	// 查询时必须带上 folder，否则可能查到别的文件夹里的同名笔记
+	result := s.DB.Where("title = ? AND folder = ?", title, folder).First(&note)
 	if result.Error != nil {
 		return "", result.Error
 	}
 	return note.Content, nil
 }
 
-// 获取笔记列表 (只返回标题)
-func (s *Store) ListNotes() ([]string, error) {
+// 🔥 修改 3: ListNotes 返回值改为 []model.NoteSummary
+// 以前只返回 []string，现在需要告诉前端哪些笔记属于哪个文件夹
+func (s *Store) ListNotes() ([]model.NoteSummary, error) {
 	var notes []model.Note
-	// 查询所有记录，只取 Title 字段
-	result := s.DB.Select("title").Find(&notes)
+	// 查询所有记录，只取 Title 和 Folder 字段，按更新时间倒序
+	result := s.DB.Select("title", "folder").Order("updated_at desc").Find(&notes)
 	if result.Error != nil {
 		return nil, result.Error
 	}
 
-	var titles []string
+	// 组装返回数据
+	var summaries []model.NoteSummary
 	for _, n := range notes {
-		titles = append(titles, n.Title)
+		summaries = append(summaries, model.NoteSummary{
+			Title:  n.Title,
+			Folder: n.Folder,
+		})
 	}
-	return titles, nil
+	return summaries, nil
 }
 
-// 删除笔记
-func (s *Store) DeleteNote(title string) error {
-	// Unscoped() 表示硬删除，如果想要软删除（保留记录但标记删除）则去掉 Unscoped()
-	return s.DB.Where("title = ?", title).Unscoped().Delete(&model.Note{}).Error
+// 🔥 修改 4: DeleteNote 增加 folder 参数
+func (s *Store) DeleteNote(title, folder string) error {
+	// 删除指定文件夹下的指定笔记
+	return s.DB.Where("title = ? AND folder = ?", title, folder).Unscoped().Delete(&model.Note{}).Error
 }
