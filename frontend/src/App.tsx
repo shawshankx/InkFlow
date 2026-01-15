@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, Save, FileText, Plus, Trash2 } from 'lucide-react';
+import { Sparkles, Save, FileText, Plus, Trash2, Download, Upload } from 'lucide-react';
 
 function App() {
   const [content, setContent] = useState("# 新建笔记\n\n开始你的创作...");
   const [title, setTitle] = useState("未命名笔记");
   const [loading, setLoading] = useState(false);
   const [notesList, setNotesList] = useState<string[]>([]);
+  
+  // 隐藏的文件上传 Input 引用
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 页面加载时：获取笔记列表
   useEffect(() => {
@@ -61,8 +64,8 @@ function App() {
       });
       if (res.ok) {
         alert("🗑️ 删除成功");
-        handleNew(); // 删除后重置为空笔记
-        fetchNotesList(); // 刷新列表
+        handleNew(); 
+        fetchNotesList(); 
       } else {
         alert("删除失败");
       }
@@ -71,7 +74,7 @@ function App() {
     }
   };
 
-  // API 5: AI 润色 (修复版：兼容 JSON 和 Stream)
+  // API 5: AI 润色 (Kimi/DeepSeek 兼容版)
   const handlePolish = async () => {
     if (!content.trim()) {
       alert("请先输入一些内容");
@@ -79,7 +82,7 @@ function App() {
     }
 
     setLoading(true);
-    setContent(""); // 清空准备接收
+    // setContent(""); // 建议：润色时不要清空，或者把结果追加到新的一行，这里先保持原样
 
     try {
       const response = await fetch('/api/ai/polish', {
@@ -92,17 +95,17 @@ function App() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      // 🔥 判断是 JSON 还是 Stream
+      // 方式 A: 普通 JSON
       const contentType = response.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
-        // === 方式 A: 普通 JSON ===
         const data = await response.json();
         const text = data.content || data.message || (data.choices && data.choices[0].message.content) || "";
         setContent(text);
         return; 
       }
 
-      // === 方式 B: 流式 Stream ===
+      // 方式 B: 流式 Stream (即使不清空，也可以先清空再接收流)
+      setContent(""); 
       if (!response.body) return;
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -115,7 +118,7 @@ function App() {
         buffer += chunk;
         
         const lines = buffer.split('\n');
-        buffer = lines.pop() || ""; // 保留未完成的行
+        buffer = lines.pop() || ""; 
 
         for (const line of lines) {
             const trimmed = line.trim();
@@ -137,6 +140,57 @@ function App() {
     }
   };
 
+  // ==========================
+  // ✨ 新功能：导出为 Markdown
+  // ==========================
+  const handleExport = () => {
+    // 1. 创建 Blob 对象
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    // 2. 创建临时下载链接
+    const url = URL.createObjectURL(blob);
+    // 3. 模拟点击下载
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${title || 'untitled'}.md`; // 文件名
+    document.body.appendChild(link);
+    link.click();
+    // 4. 清理
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // ==========================
+  // ✨ 新功能：导入 Markdown
+  // ==========================
+  const handleImportClick = () => {
+    // 触发隐藏的文件输入框点击
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // 读取文件名作为标题 (去掉 .md 后缀)
+    const fileName = file.name.replace(/\.md$/i, '');
+    setTitle(fileName);
+
+    // 读取文件内容
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result;
+      if (typeof text === 'string') {
+        setContent(text);
+        // 如果需要自动保存，可以在这里调用 handleSave()
+        // 但为了安全，最好让用户确认后再点保存
+      }
+    };
+    reader.readAsText(file);
+    
+    // 清空 input，防止同一个文件无法再次触发 onChange
+    event.target.value = ''; 
+  };
+
   // 新建空笔记
   const handleNew = () => {
     setTitle("新笔记-" + Date.now());
@@ -146,6 +200,15 @@ function App() {
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', background: '#f9fafb' }}>
       
+      {/* 隐藏的文件上传 Input */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileChange} 
+        accept=".md,.txt" // 只接受 md 和 txt
+        style={{ display: 'none' }} 
+      />
+
       {/* === 左侧侧边栏 (目录) === */}
       <div style={{ width: '250px', background: '#fff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -183,7 +246,7 @@ function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         
         {/* 顶部工具栏 */}
-        <div style={{ padding: '15px 20px', background: 'white', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: '15px', alignItems: 'center' }}>
+        <div style={{ padding: '15px 20px', background: 'white', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: '10px', alignItems: 'center' }}>
           <input 
             value={title} 
             onChange={e => setTitle(e.target.value)} 
@@ -191,8 +254,20 @@ function App() {
             style={{ fontSize: '20px', border:'none', outline:'none', fontWeight:'bold', flex: 1 }}
           />
           
+          {/* 导入按钮 */}
+          <button onClick={handleImportClick} title="导入本地 Markdown" style={{display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background:'#f3f4f6', color:'#374151', border:'none', borderRadius:'6px', cursor:'pointer'}}>
+            <Upload size={16}/> 导入
+          </button>
+
+          {/* 导出按钮 */}
+          <button onClick={handleExport} title="导出为 Markdown" style={{display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background:'#f3f4f6', color:'#374151', border:'none', borderRadius:'6px', cursor:'pointer'}}>
+            <Download size={16}/> 导出
+          </button>
+
+          <div style={{width: '1px', height: '24px', background:'#e5e7eb', margin:'0 5px'}}></div>
+
           <button onClick={handlePolish} disabled={loading} style={{display:'flex', alignItems:'center', gap:'5px', padding:'8px 16px', background:'#8b5cf6', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', opacity: loading ? 0.7 : 1}}>
-            <Sparkles size={16}/> {loading ? 'AI 思考中' : 'AI 润色'}
+            <Sparkles size={16}/> {loading ? 'AI 润色中...' : 'AI 润色'}
           </button>
           
           <button onClick={handleSave} style={{display:'flex', alignItems:'center', gap:'5px', padding:'8px 16px', background:'#10b981', color:'white', border:'none', borderRadius:'6px', cursor:'pointer'}}>
