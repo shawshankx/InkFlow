@@ -12,11 +12,11 @@ services:
       - DB_HOST=mysql
       - DB_PORT=3306
       - DB_USER=root
-      - DB_PASSWORD=rootpassword
-      - DB_NAME=notes_db
+      - DB_PASSWORD=${DB_ROOT_PASSWORD}
+      - DB_NAME=${DB_NAME}
       # AI 配置 (填你的 Key)
-      - AI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
-      - AI_BASE_URL=https://api.deepseek.com
+      - AI_API_KEY=${AI_API_KEY}
+      - AI_BASE_URL=${AI_BASE_URL}
     depends_on:
       - mysql
 
@@ -25,10 +25,10 @@ services:
     container_name: inkflow_mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: notes_db
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
     ports:
-      - "3306:3306"
+      - "${DB_PORT}:3306"
     volumes:
       - ./data/mysql:/var/lib/mysql
     command: --default-authentication-plugin=mysql_native_password

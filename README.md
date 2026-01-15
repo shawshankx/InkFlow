@@ -52,15 +52,25 @@ inkflow/
 
 1. 获取代码  
    确保你的本地目录包含完整的项目文件。
+   ```bash
+   git clone [https://github.com/shawshankx/InkFlow.git](https://github.com/shawshankx/InkFlow.git)
+   cd inkflow
+   ```
+
 2. 配置环境变量  
-   打开 docker-compose.yml，找到 app 服务部分，填入你的 AI API Key。  
-   💡 提示：推荐使用 DeepSeek（深度求索），价格便宜且中文润色效果极佳。  
-  
+   项目根目录提供了一个配置模板。请复制一份并重命名为 .env，然后填入你的 API Key。
+   `Linux / Mac:`
+   ```bash
+   cp .env.example .env
+   ```
+   `Windows:` 直接复制 .env.example 并重命名为 .env。
+   然后用编辑器打开 .env 文件，修改以下配置：
 
    ```yaml
-   - AI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx  # <--- 在这里填入你的 Key
-   - AI_BASE_URL=https://api.deepseek.com
-   ```
+   AI_API_KEY=sk-your-real-key-here  # <--- 必填：你的 AI Key
+   AI_BASE_URL=[https://api.deepseek.com](https://api.deepseek.com)
+   ```  
+   💡 提示：推荐使用 DeepSeek（深度求索），价格便宜且中文润色效果极佳。  
 
 3. 一键启动  
    在项目根目录下执行：

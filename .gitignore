@@ -32,3 +32,6 @@ Thumbs.db
 .vscode/
 *.log
 .env
+
+# 忽略真实的环境变量文件
+.env
