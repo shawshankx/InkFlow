@@ -37,9 +37,7 @@ func (h *AIHandler) Polish(c *gin.Context) {
 	if modelName == "" {
 		modelName = "deepseek-chat"
 	}
-	log.Println(apiKey)
-	log.Println(baseUrl)
-	log.Println(modelName)
+
 	// 这里的 prompt 可以根据需要调整
 	prompt := "请直接润色以下内容，不要废话，保持 Markdown 格式：\n\n" + req.Content
 
