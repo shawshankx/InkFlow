@@ -18,12 +18,20 @@
 
 ### ✨ 核心特性
 
-- **🔒 数据隐私优先**：所有笔记存储在本地 **MySQL** 数据库中，结构化存储，安全可靠。
-- **🤖 AI 智能辅助**：内置 AI 润色功能，支持流式输出（打字机效果），可接入 OpenAI、DeepSeek 等模型。
-- **📝 Markdown 编辑**：左侧编辑，右侧实时预览，支持标准 Markdown 语法。
-- **🚀 单机极速部署**：基于 Docker Compose，前端、后端、数据库一键拉起。
-- **☁️ 云原生架构**：采用经典分层架构（Handler/Service/Store），后端 Go + Gin + GORM，前端 React + Vite。
-- **📂 笔记管理**：支持笔记列表查看、新建、保存、删除和即时加载。
+- **🔒 数据私有化**：笔记全量存储于本地 **MySQL** 数据库，绝不上传云端，保障个人数据绝对安全与隐私。
+- **🤖 AI 智能协同**：深度集成 AI 润色与纠错功能，支持流式输出体验，可自由接入 DeepSeek、OpenAI 等主流大模型。
+- **📝 沉浸式 Markdown 体验**：采用分级分屏布局，左侧高效输入，右侧实时渲染，支持标准语法与代码高亮。
+- **� 现代化文件夹体系**：
+    - **结构化管理**：基于关系型数据库的文件夹系统，支持创建空文件夹，分类清晰。
+    - **无感重命名**：侧边栏**内联编辑**，无需多余弹窗，回车即刻保存。
+    - **上下文感知**：智能识别当前选中的目录上下文，新笔记自动归类，告别手动调整。
+- **🖱️ 丝滑交互流程**：
+    - **自由拖拽**：支持 **Drag & Drop** 原生交互，单手即可完成笔记跨目录搬运，无需多余确认流程。
+    - **隐形自动保存**：标题与内容双向静默自动保存，交互逻辑高度精简，专注创作不再分心。
+- **�️ 增强型批量工具**：
+    - **高效整理**：一键开启批量模式，支持跨笔记多选与文件夹级联操作。
+    - **快速导出/清理**：支持多选导出为 ZIP（保留完整目录结构）或一键安全销毁。
+- **🚀 零门槛私有化部署**：基于 Docker Compose 编排，环境一键拉起，多阶段构建极致缩小镜像体积。
 
 ### 🛠 技术栈
 
@@ -157,12 +165,20 @@ Most importantly, it is **self-hosted**—your data stays in your hands, not on 
 
 ### ✨ Key Features
 
-- **🔒 Privacy First**: All notes are stored locally in a MySQL database, ensuring full data ownership.
-- **🤖 AI Assistance**: Built-in AI polishing feature with streaming output (typewriter effect), supporting OpenAI, DeepSeek, and compatible models.
-- **📝 Markdown Editor**: Split-pane editor with real-time preview, supporting standard Markdown syntax.
-- **🚀 Fast Deployment**: Docker Compose based setup. Spin up the frontend, backend, and database with a single command.
-- **☁️ Cloud-Native Architecture**: Layered architecture (Handler/Store/Model), utilizing Go + Gin + GORM backend and React + Vite frontend.
-- **📂 Note Management**: Create, read, update, delete (CRUD), and list your notes instantly.
+- **🔒 Privacy First**: All notes are stored locally in a private **MySQL** database. No cloud syncing, ensuring total data ownership.
+- **🤖 AI Synergy**: Deeply integrated AI polishing with streaming responses. Compatible with OpenAI, DeepSeek, and custom AI endpoints.
+- **📝 Immersive Markdown**: High-performance editor with real-time synchronized preview and standard syntax support.
+- **� Modern Folder Management**:
+    - **Structured Organization**: Relational-backed folder system with support for empty folders and organizational hierarchies.
+    - **Inline Renaming**: Intuitive sidebar editing without intrusive popups. Save changes instantly with a single Enter.
+    - **Contextual Creation**: Smart context detection. New notes automatically inherit the currently active folder.
+- **🖱️ Seamless UX Flow**:
+    - **D&D Organization**: Native **Drag & Drop** support for effortless note relocation between folders.
+    - **Invisible Auto-Save**: Silent, debounced saving for both titles and content. No manual save buttons or annoying success alerts.
+- **�️ Pro Batch Operations**:
+    - **Mass Management**: Dedicated batch mode for selecting multiple notes or entire folders.
+    - **Export & Cleanup**: Bulk export notes to ZIP (preserving structure) or perform cascading deletions.
+- **🚀 Cloud-Native Deployment**: One-click setup via Docker Compose. Multi-stage builds for optimized container performance.
 
 ### 🛠 Tech Stack
 
