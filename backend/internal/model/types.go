@@ -27,7 +27,7 @@ type Note struct {
 	Title     string         `gorm:"uniqueIndex:idx_title_folder_id;size:191" json:"title"`
 	
 	// Refactor: Use FolderID foreign key
-	FolderID  uint           `gorm:"uniqueIndex:idx_title_folder_id;default:null" json:"folder_id"`
+	FolderID  *uint          `gorm:"uniqueIndex:idx_title_folder_id;default:null" json:"folder_id"`
 	Folder    *Folder        `json:"folder,omitempty"` // Association
 	
 	// Legacy: We don't map the string column anymore, but we need to handle migration manually

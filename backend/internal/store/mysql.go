@@ -90,16 +90,16 @@ func (s *Store) ensureFolder(name string) (*model.Folder, error) {
 	return &folder, nil
 }
 
-// getFolderID 获取 FolderID (如果 folderName 为空则返回 0/null 的效果)
-func (s *Store) getFolderID(folderName string) (uint, error) {
+// getFolderID 获取 FolderID (如果 folderName 为空则返回 nil)
+func (s *Store) getFolderID(folderName string) (*uint, error) {
 	if folderName == "" {
-		return 0, nil
+		return nil, nil
 	}
 	folder, err := s.ensureFolder(folderName)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return folder.ID, nil
+	return &folder.ID, nil
 }
 
 // SaveNote
@@ -113,10 +113,10 @@ func (s *Store) SaveNote(title, folderName, content string) error {
 	var note model.Note
 	// 构建查询条件
 	query := s.DB.Where("title = ?", title)
-	if folderID == 0 {
-		query = query.Where("folder_id IS NULL OR folder_id = 0")
+	if folderID == nil {
+		query = query.Where("folder_id IS NULL")
 	} else {
-		query = query.Where("folder_id = ?", folderID)
+		query = query.Where("folder_id = ?", *folderID)
 	}
 	
 	result := query.First(&note)
@@ -128,9 +128,9 @@ func (s *Store) SaveNote(title, folderName, content string) error {
 	} else {
 		// 不存在 -> 创建
 		newNote := model.Note{
-			Title:   title,
+			Title:    title,
 			FolderID: folderID,
-			Content: content,
+			Content:  content,
 		}
 		// 如果 folderID == 0，GORM 会存为 0。如果我们想要 NULL，可以是指针或者 Accept 0 as "root"
 		// 这里我们假设 0 就是 root。Types里 FolderID 是 uint，默认 0。
@@ -143,24 +143,17 @@ func (s *Store) SaveNote(title, folderName, content string) error {
 
 // GetNote
 func (s *Store) GetNote(title, folderName string) (string, error) {
-	// 需要先解析 folderName -> ID
-	// 但这可能有一个问题：如果前端传了一个不存在的文件夹名，我们这里不应该创建它。
-	// 所以仅仅是 Look up
-	var folderID uint = 0
-	if folderName != "" {
+	var note model.Note
+	query := s.DB.Where("title = ?", title)
+	if folderName == "" {
+		query = query.Where("folder_id IS NULL")
+	} else {
+		// 先找文件夹ID
 		var f model.Folder
 		if err := s.DB.Where("name = ?", folderName).First(&f).Error; err != nil {
 			return "", fmt.Errorf("找不到文件夹: %s", folderName)
 		}
-		folderID = f.ID
-	}
-
-	var note model.Note
-	query := s.DB.Where("title = ?", title)
-	if folderID == 0 {
-		query = query.Where("folder_id IS NULL OR folder_id = 0")
-	} else {
-		query = query.Where("folder_id = ?", folderID)
+		query = query.Where("folder_id = ?", f.ID)
 	}
 	
 	if err := query.First(&note).Error; err != nil {
@@ -191,24 +184,16 @@ func (s *Store) ListNotes() ([]model.NoteSummary, error) {
 	return summaries, nil
 }
 
-// DeleteNote
 func (s *Store) DeleteNote(title, folderName string) error {
-	// Resolve ID
-	var folderID uint = 0
-	if folderName != "" {
+	query := s.DB.Where("title = ?", title)
+	if folderName == "" {
+		query = query.Where("folder_id IS NULL")
+	} else {
 		var f model.Folder
 		if err := s.DB.Where("name = ?", folderName).First(&f).Error; err != nil {
-			// 如果文件夹都不存在，那笔记肯定也不存在，直接返回无需删除
 			return nil
 		}
-		folderID = f.ID
-	}
-	
-	query := s.DB.Where("title = ?", title)
-	if folderID == 0 {
-		query = query.Where("folder_id IS NULL OR folder_id = 0")
-	} else {
-		query = query.Where("folder_id = ?", folderID)
+		query = query.Where("folder_id = ?", f.ID)
 	}
 	
 	return query.Unscoped().Delete(&model.Note{}).Error
@@ -223,14 +208,13 @@ func (s *Store) UpdateNoteMeta(oldTitle, oldFolder, newTitle, newFolder string) 
 	newFID, err := s.getFolderID(newFolder)
 	if err != nil { return err }
 
-	// 2. Check collision
 	if oldTitle != newTitle || oldFolder != newFolder {
 		var count int64
 		q := s.DB.Model(&model.Note{}).Where("title = ?", newTitle)
-		if newFID == 0 {
-			q = q.Where("folder_id IS NULL OR folder_id = 0")
+		if newFID == nil {
+			q = q.Where("folder_id IS NULL")
 		} else {
-			q = q.Where("folder_id = ?", newFID)
+			q = q.Where("folder_id = ?", *newFID)
 		}
 		q.Count(&count)
 		if count > 0 {
@@ -243,10 +227,10 @@ func (s *Store) UpdateNoteMeta(oldTitle, oldFolder, newTitle, newFolder string) 
 	// 3. Find Old Note
 	var note model.Note
 	qOld := s.DB.Where("title = ?", oldTitle)
-	if oldFID == 0 {
-		qOld = qOld.Where("folder_id IS NULL OR folder_id = 0")
+	if oldFID == nil {
+		qOld = qOld.Where("folder_id IS NULL")
 	} else {
-		qOld = qOld.Where("folder_id = ?", oldFID)
+		qOld = qOld.Where("folder_id = ?", *oldFID)
 	}
 	if err := qOld.First(&note).Error; err != nil {
 		return err
@@ -305,4 +289,29 @@ func (s *Store) ListFolders() ([]string, error) {
 		names = append(names, f.Name)
 	}
 	return names, nil
+}
+
+// DeleteFolder 删除文件夹及其下所有笔记
+func (s *Store) DeleteFolder(name string) error {
+	if name == "" {
+		return fmt.Errorf("不能删除根目录")
+	}
+
+	var folder model.Folder
+	if err := s.DB.Where("name = ?", name).First(&folder).Error; err != nil {
+		return fmt.Errorf("文件夹不存在")
+	}
+
+	// 开启事务
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		// 1. 删除文件夹下的所有笔记 (物理删除)
+		if err := tx.Unscoped().Where("folder_id = ?", folder.ID).Delete(&model.Note{}).Error; err != nil {
+			return err
+		}
+		// 2. 删除文件夹本身
+		if err := tx.Delete(&folder).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }

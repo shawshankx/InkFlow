@@ -165,3 +165,17 @@ func (h *NoteHandler) ListFolders(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, folders)
 }
+
+// DeleteFolder 删除文件夹
+func (h *NoteHandler) DeleteFolder(c *gin.Context) {
+	name := c.Query("name")
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少文件夹名称"})
+		return
+	}
+	if err := h.Store.DeleteFolder(name); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "folder deleted"})
+}

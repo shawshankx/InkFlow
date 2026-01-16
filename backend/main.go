@@ -43,6 +43,7 @@ func main() {
 		api.POST("/folders/rename", noteHandler.RenameFolder) // 🔥 新增文件夹重命名接口
 		api.POST("/folders", noteHandler.CreateFolder)       // 🔥 新增创建文件夹接口
 		api.GET("/folders", noteHandler.ListFolders)         // 🔥 新增获取文件夹列表
+		api.DELETE("/folders", noteHandler.DeleteFolder)     // 🔥 新增删除文件夹接口
 		api.POST("/ai/polish", aiHandler.Polish)
 	}
 

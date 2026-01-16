@@ -15,8 +15,8 @@ interface NoteItem {
 }
 
 function App() {
-  const [content, setContent] = useState("# 新建笔记\n\n开始你的创作...");
-  const [title, setTitle] = useState("未命名笔记");
+  const [content, setContent] = useState("");
+  const [title, setTitle] = useState("");
   const [folder, setFolder] = useState(""); // 🔥 当前笔记的文件夹状态
 
   // 用于追踪加载时的原始位置，以便判断移动/重命名
@@ -35,7 +35,8 @@ function App() {
 
   // === 批量操作状态 ===
   const [isBatchMode, setIsBatchMode] = useState(false);
-  const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set()); // 存 "title" (假设暂时按标题唯一选，或者联合key)
+  const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set()); // 存 "title"
+  const [selectedFolders, setSelectedFolders] = useState<Set<string>>(new Set()); // 🔥 新增：选中的文件夹
 
   // === 撤回状态 ===
   const [historyContent, setHistoryContent] = useState<string | null>(null);
@@ -52,9 +53,8 @@ function App() {
 
   // 🔥 自动保存逻辑
   useEffect(() => {
-    // 只有当有内容变更，且不是新建的空笔记时才自动保存
-    // 防止加载笔记时触发
-    if (content === "# 新建笔记\n\n开始你的创作..." || !title) return;
+    // 只有当有标题且不是正在加载时才自动保存
+    if (!title) return;
 
     // 如果刚刚加载完笔记，不要马上保存（避免覆盖）
     // 简单的判断：如果内容和 originalLocation 里的内容不同... 但我们不存 content 在 location 里
@@ -99,6 +99,10 @@ function App() {
     if (newSet.has(folderName)) newSet.delete(folderName);
     else newSet.add(folderName);
     setExpandedFolders(newSet);
+
+    // 🔥 新增：点击文件夹时，将其设为当前编辑器上下文（即“选中”了该文件夹）
+    // 这样点击“新建笔记”时，就会默认在这个文件夹下
+    setFolder(folderName);
   };
 
   // --- API 操作 ---
@@ -115,8 +119,16 @@ function App() {
       const notesData = await resNotes.json();
       const foldersData = await resFolders.json();
 
-      setNotesList(notesData || []);
-      setFoldersList(foldersData || []);
+      const notes = notesData || [];
+      const folders = foldersData || [];
+
+      setNotesList(notes);
+      setFoldersList(folders);
+
+      // 🔥 新增：只有当完全没有任何笔记和文件夹时，才默认开启一个新笔记
+      if (notes.length === 0 && folders.length === 0) {
+        handleNew();
+      }
     } catch (e) {
       console.error("加载列表失败", e);
     }
@@ -189,7 +201,6 @@ function App() {
 
     if (!customTitle) {
       if (res.ok) {
-        if (!isAutoSave) alert("✅ 保存成功!");
         setSaveStatus("Saved");
         setHistoryContent(null);
         fetchNotesList(); // 刷新列表以更新文件夹结构
@@ -204,8 +215,13 @@ function App() {
   const handleDelete = async () => {
     if (!confirm(`确定要删除 "${title}" 吗？此操作不可恢复。`)) return;
     await deleteNoteAPI(title, folder);
-    alert("🗑️ 删除成功");
-    handleNew();
+
+    // 删除后不再强制打开新笔记，而是清空编辑器
+    setTitle("");
+    setContent("");
+    setFolder("");
+    setOriginalLocation(null);
+
     fetchNotesList();
   };
 
@@ -282,12 +298,31 @@ function App() {
   const toggleBatchMode = () => {
     setIsBatchMode(!isBatchMode);
     setSelectedNotes(new Set());
+    setSelectedFolders(new Set());
   };
 
   const toggleNoteSelection = (noteTitle: string) => {
     const newSet = new Set(selectedNotes);
     if (newSet.has(noteTitle)) { newSet.delete(noteTitle); } else { newSet.add(noteTitle); }
     setSelectedNotes(newSet);
+  };
+
+  // 🔥 切换文件夹选中 (选中/取消选中该文件夹下所有笔记)
+  const toggleFolderSelection = (folderName: string, notes: NoteItem[]) => {
+    const newNotesSet = new Set(selectedNotes);
+    const newFoldersSet = new Set(selectedFolders);
+    const isSelected = newFoldersSet.has(folderName);
+
+    if (isSelected) {
+      newFoldersSet.delete(folderName);
+      notes.forEach(n => newNotesSet.delete(n.title));
+    } else {
+      newFoldersSet.add(folderName);
+      notes.forEach(n => newNotesSet.add(n.title));
+    }
+
+    setSelectedNotes(newNotesSet);
+    setSelectedFolders(newFoldersSet);
   };
 
   const toggleSelectAll = () => {
@@ -300,21 +335,37 @@ function App() {
   };
 
   const handleBatchDelete = async () => {
-    if (selectedNotes.size === 0) return;
-    if (!confirm(`确定要删除选中的 ${selectedNotes.size} 篇笔记吗？`)) return;
+    if (selectedNotes.size === 0 && selectedFolders.size === 0) return;
 
-    // 遍历选中的标题，找到对应的 folder，然后删除
+    if (!confirm(`确定要删除选中的 ${selectedNotes.size} 篇笔记${selectedFolders.size > 0 ? ` 和 ${selectedFolders.size} 个文件夹` : ""} 吗？\n(文件夹内的所有内容将被物理删除)`)) return;
+
+    // 1. 先删除选中的文件夹 (后端会级联删除笔记)
+    for (const folderName of selectedFolders) {
+      try {
+        await fetch(`/api/folders?name=${encodeURIComponent(folderName)}`, { method: 'DELETE' });
+      } catch (e) { console.error(e); }
+    }
+
+    // 2. 删除选中的笔记 (排除掉已经在上面删除过的文件夹里的笔记)
+    // 简单起见：遍历并调用 API，后端找不到就不删。
     for (const noteTitle of selectedNotes) {
       const noteItem = notesList.find(n => n.title === noteTitle);
-      if (noteItem) {
+      if (noteItem && !selectedFolders.has(noteItem.folder)) {
         try { await deleteNoteAPI(noteTitle, noteItem.folder); } catch (e) { }
       }
     }
-    alert(`批量删除完成`);
+
     setSelectedNotes(new Set());
+    setSelectedFolders(new Set());
     setIsBatchMode(false);
+
+    // 批量删除后清空编辑器
+    setTitle("");
+    setContent("");
+    setFolder("");
+    setOriginalLocation(null);
+
     fetchNotesList();
-    handleNew();
   };
 
   const handleBatchExport = async () => {
@@ -372,24 +423,30 @@ function App() {
 
   // 🔥 新建文件夹 (直接创建空文件夹)
   const handleNewFolder = async () => {
-    const name = prompt("请输入新文件夹名称:");
-    if (!name) return;
-
+    const defaultName = "新文件夹-" + Date.now().toString().slice(-4);
     try {
       const res = await fetch('/api/folders', {
         method: 'POST',
-        body: JSON.stringify({ name })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: defaultName })
       });
       if (res.ok) {
-        setFolder(name);
-        fetchNotesList(); // 刷新列表
+        // 先刷新列表，确保 DOM 中出现了这个新文件夹
+        await fetchNotesList();
+
+        // 自动激活重命名模式
+        setEditingFolder(defaultName);
+        setTempFolderName("新文件夹");
+
+        // 展开根目录以便看到新文件夹（如果是新建在根目录下的话）
+        // 暂时假设新建的都在根级
       } else {
         alert("创建失败");
       }
     } catch (e) {
       alert("请求出错");
     }
-  }
+  };
 
   // 🔥 开始重命名 (点击编辑图标触发)
   const startRenameFolder = (oldName: string, e: React.MouseEvent) => {
@@ -446,7 +503,7 @@ function App() {
 
   const handleNew = () => {
     setTitle("新笔记-" + Date.now());
-    setFolder(""); // 默认回到根目录
+    // 不再重置 folder，保留当前上下文
     setOriginalLocation(null); // 新建笔记没有原始位置
     setContent("");
     setHistoryContent(null);
@@ -477,8 +534,6 @@ function App() {
       const sourceNote = JSON.parse(dataStr) as NoteItem;
       // 如果来源文件夹和目标一致，忽略
       if (sourceNote.folder === targetFolder || (!sourceNote.folder && !targetFolder)) return;
-
-      if (!confirm(`确定把 "${sourceNote.title}" 移动到 "${targetFolder || "未分类"}" 吗？`)) return;
 
       const res = await fetch('/api/notes/move', {
         method: 'POST',
@@ -558,7 +613,16 @@ function App() {
                   style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '8px', color: '#4b5563', fontWeight: '600', fontSize: '14px', justifyContent: 'space-between' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-                    {isExpanded ? <ChevronDown size={14} style={{ marginRight: 5 }} /> : <ChevronRight size={14} style={{ marginRight: 5 }} />}
+                    {isBatchMode ? (
+                      <div
+                        onClick={(e) => { e.stopPropagation(); toggleFolderSelection(groupName, notes); }}
+                        style={{ marginRight: 8, display: 'flex', alignItems: 'center' }}
+                      >
+                        {selectedFolders.has(groupName) ? <CheckSquare size={16} color="#3b82f6" /> : <Square size={16} color="#9ca3af" />}
+                      </div>
+                    ) : (
+                      isExpanded ? <ChevronDown size={14} style={{ marginRight: 5 }} /> : <ChevronRight size={14} style={{ marginRight: 5 }} />
+                    )}
                     <Folder size={16} style={{ marginRight: 6, fill: '#fbbf24', stroke: '#d97706' }} />
 
                     {/* 内联编辑输入框 vs 文本显示 */}
