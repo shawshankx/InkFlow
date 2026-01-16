@@ -1,4 +1,4 @@
-package store
+package dao
 
 import (
 	"ai-notes/internal/model" // 请确认你的 go.mod 包名
@@ -9,12 +9,12 @@ import (
 	"gorm.io/gorm"
 )
 
-type Store struct {
+type NoteDAO struct {
 	DB *gorm.DB
 }
 
 // 初始化 MySQL 连接
-func NewMySQLStore(user, password, host, port, dbName string) *Store {
+func NewNoteDAO(user, password, host, port, dbName string) *NoteDAO {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		user, password, host, port, dbName)
 
@@ -30,13 +30,13 @@ func NewMySQLStore(user, password, host, port, dbName string) *Store {
 		log.Fatal("数据库迁移失败:", err)
 	}
 
-	s := &Store{DB: db}
+	s := &NoteDAO{DB: db}
 	s.MigrateLegacyFolders() // 尝试迁移旧数据
 	return s
 }
 
 // MigrateLegacyFolders 将旧的 folder 字符串字段迁移到 Folders 表
-func (s *Store) MigrateLegacyFolders() {
+func (s *NoteDAO) MigrateLegacyFolders() {
 	// 检查 notes 表是否有 folder 列 (raw SQL)
 	// 如果 Note struct 已经去掉了 Folder 字段，GORM 可能看不到它，但数据库里还在
 	// 我们用 raw sql 检查并迁移
@@ -77,7 +77,7 @@ func (s *Store) MigrateLegacyFolders() {
 }
 
 // ensureFolder 根据名称获取或创建 Folder
-func (s *Store) ensureFolder(name string) (*model.Folder, error) {
+func (s *NoteDAO) ensureFolder(name string) (*model.Folder, error) {
 	if name == "" {
 		return nil, nil // 根目录
 	}
@@ -91,7 +91,7 @@ func (s *Store) ensureFolder(name string) (*model.Folder, error) {
 }
 
 // getFolderID 获取 FolderID (如果 folderName 为空则返回 nil)
-func (s *Store) getFolderID(folderName string) (*uint, error) {
+func (s *NoteDAO) getFolderID(folderName string) (*uint, error) {
 	if folderName == "" {
 		return nil, nil
 	}
@@ -103,7 +103,7 @@ func (s *Store) getFolderID(folderName string) (*uint, error) {
 }
 
 // SaveNote
-func (s *Store) SaveNote(title, folderName, content string) error {
+func (s *NoteDAO) SaveNote(title, folderName, content string) error {
 	folderID, err := s.getFolderID(folderName)
 	if err != nil {
 		return err
@@ -142,7 +142,7 @@ func (s *Store) SaveNote(title, folderName, content string) error {
 }
 
 // GetNote
-func (s *Store) GetNote(title, folderName string) (string, error) {
+func (s *NoteDAO) GetNote(title, folderName string) (string, error) {
 	var note model.Note
 	query := s.DB.Where("title = ?", title)
 	if folderName == "" {
@@ -163,7 +163,7 @@ func (s *Store) GetNote(title, folderName string) (string, error) {
 }
 
 // ListNotes Return summaries with Folder Names
-func (s *Store) ListNotes() ([]model.NoteSummary, error) {
+func (s *NoteDAO) ListNotes() ([]model.NoteSummary, error) {
 	var notes []model.Note
 	// Preload Folder 关联
 	if err := s.DB.Preload("Folder").Order("updated_at desc").Find(&notes).Error; err != nil {
@@ -184,7 +184,7 @@ func (s *Store) ListNotes() ([]model.NoteSummary, error) {
 	return summaries, nil
 }
 
-func (s *Store) DeleteNote(title, folderName string) error {
+func (s *NoteDAO) DeleteNote(title, folderName string) error {
 	query := s.DB.Where("title = ?", title)
 	if folderName == "" {
 		query = query.Where("folder_id IS NULL")
@@ -200,7 +200,7 @@ func (s *Store) DeleteNote(title, folderName string) error {
 }
 
 // UpdateNoteMeta (Move or Rename Note)
-func (s *Store) UpdateNoteMeta(oldTitle, oldFolder, newTitle, newFolder string) error {
+func (s *NoteDAO) UpdateNoteMeta(oldTitle, oldFolder, newTitle, newFolder string) error {
 	// 1. Resolve IDs
 	oldFID, err := s.getFolderID(oldFolder) // 这里如果 oldFolder 不存在会创建... 理论上不应该，但如果是 legacy string 问题不大
 	if err != nil { return err }
@@ -243,7 +243,7 @@ func (s *Store) UpdateNoteMeta(oldTitle, oldFolder, newTitle, newFolder string) 
 }
 
 // RenameFolder 修改文件夹名称
-func (s *Store) RenameFolder(oldName, newName string) error {
+func (s *NoteDAO) RenameFolder(oldName, newName string) error {
 	if oldName == "" || newName == "" {
 		return fmt.Errorf("文件夹名称不能为空")
 	}
@@ -269,7 +269,7 @@ func (s *Store) RenameFolder(oldName, newName string) error {
 }
 
 // CreateFolder 创建空文件夹
-func (s *Store) CreateFolder(name string) error {
+func (s *NoteDAO) CreateFolder(name string) error {
 	if name == "" {
 		return fmt.Errorf("文件夹名称不能为空")
 	}
@@ -278,7 +278,7 @@ func (s *Store) CreateFolder(name string) error {
 }
 
 // ListFolders 获取所有文件夹名称列表
-func (s *Store) ListFolders() ([]string, error) {
+func (s *NoteDAO) ListFolders() ([]string, error) {
 	var folders []model.Folder
 	if err := s.DB.Select("name").Find(&folders).Error; err != nil {
 		return nil, err
@@ -292,7 +292,7 @@ func (s *Store) ListFolders() ([]string, error) {
 }
 
 // DeleteFolder 删除文件夹及其下所有笔记
-func (s *Store) DeleteFolder(name string) error {
+func (s *NoteDAO) DeleteFolder(name string) error {
 	if name == "" {
 		return fmt.Errorf("不能删除根目录")
 	}

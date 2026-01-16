@@ -47,12 +47,13 @@ inkflow/
 ├── docker-compose.yml    # 容器编排配置
 ├── Dockerfile            # 多阶段构建脚本
 ├── backend/
-│   ├── main.go           # Go 程序入口 (依赖注入与路由)
+│   ├── main.go           # 程序入口 (初始化与启动)
 │   ├── go.mod            # Go 依赖定义
-│   └── internal/         # 内部业务逻辑 (分层架构)
-│       ├── handler/      # HTTP 接口层 (控制层)
-│       ├── store/        # 数据库操作层 (GORM 实现)
-│       └── model/        # 数据模型定义
+│   └── internal/         # 内部业务逻辑
+│       ├── handler/      # HTTP 控制层 (处理请求逻辑)
+│       ├── dao/          # 数据访问层 (GORM 实现, 原 store)
+│       ├── router/       # 路由层 (集中管理 API 路由)
+│       └── model/        # 数据模型 (note.go)
 └── frontend/
     ├── src/              # React 源代码
     ├── vite.config.ts    # 前端构建配置
@@ -194,12 +195,13 @@ inkflow/
 ├── docker-compose.yml    # Container orchestration
 ├── Dockerfile            # Multi-stage build script
 ├── backend/
-│   ├── main.go           # Entry point (DI & Routing)
+│   ├── main.go           # Entry point (App bootstrap)
 │   ├── go.mod            # Go module definitions
 │   └── internal/         # Internal business logic
 │       ├── handler/      # HTTP handlers (Controller layer)
-│       ├── store/        # Database operations (GORM implementation)
-│       └── model/        # Data models
+│       ├── dao/          # Data Access Object (GORM, formerly store)
+│       ├── router/       # Routing layer (Route registration)
+│       └── model/        # Data models (note.go)
 └── frontend/
     ├── src/              # React source code
     ├── vite.config.ts    # Frontend build config

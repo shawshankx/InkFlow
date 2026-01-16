@@ -2,17 +2,17 @@ package handler
 
 import (
 	"ai-notes/internal/model" // 请确认你的 go.mod 名字，如果是 inkflow 请改为 inkflow
-	"ai-notes/internal/store"
+	"ai-notes/internal/dao"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
 type NoteHandler struct {
-	Store *store.Store
+	Store *dao.NoteDAO
 }
 
-func NewNoteHandler(s *store.Store) *NoteHandler {
+func NewNoteHandler(s *dao.NoteDAO) *NoteHandler {
 	return &NoteHandler{Store: s}
 }
 
