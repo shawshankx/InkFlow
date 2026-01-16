@@ -87,7 +87,28 @@ func (s *Store) ListNotes() ([]model.NoteSummary, error) {
 }
 
 // 🔥 修改 4: DeleteNote 增加 folder 参数
+// DeleteNote 删除指定文件夹下的指定笔记
 func (s *Store) DeleteNote(title, folder string) error {
-	// 删除指定文件夹下的指定笔记
 	return s.DB.Where("title = ? AND folder = ?", title, folder).Unscoped().Delete(&model.Note{}).Error
+}
+
+// MoveNote 移动笔记 (重命名文件夹)
+func (s *Store) MoveNote(title, oldFolder, newFolder string) error {
+	var note model.Note
+	// 1. 检查目标位置是否已存在同名笔记
+	var count int64
+	s.DB.Model(&model.Note{}).Where("title = ? AND folder = ?", title, newFolder).Count(&count)
+	if count > 0 {
+		return fmt.Errorf("目标文件夹 '%s' 下已存在标题为 '%s' 的笔记", newFolder, title)
+	}
+
+	// 2. 查找原笔记
+	result := s.DB.Where("title = ? AND folder = ?", title, oldFolder).First(&note)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	// 3. 更新 Folder
+	note.Folder = newFolder
+	return s.DB.Save(&note).Error
 }

@@ -39,6 +39,7 @@ func main() {
 		api.GET("/notes/content", noteHandler.Get)
 		api.POST("/notes", noteHandler.Save)
 		api.DELETE("/notes", noteHandler.Delete)
+		api.POST("/notes/move", noteHandler.Move) // 🔥 新增移动接口
 		api.POST("/ai/polish", aiHandler.Polish)
 	}
 

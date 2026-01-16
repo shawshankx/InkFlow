@@ -88,3 +88,27 @@ func (h *NoteHandler) Delete(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
+
+// Move 移动笔记
+func (h *NoteHandler) Move(c *gin.Context) {
+	var req struct {
+		Title     string `json:"title"`
+		OldFolder string `json:"oldFolder"`
+		NewFolder string `json:"newFolder"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	if req.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少标题"})
+		return
+	}
+
+	if err := h.Store.MoveNote(req.Title, req.OldFolder, req.NewFolder); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "moved"})
+}
