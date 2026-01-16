@@ -19,16 +19,16 @@
 ### ✨ 核心特性
 
 - **🔒 数据私有化**：笔记全量存储于本地 **MySQL** 数据库，绝不上传云端，保障个人数据绝对安全与隐私。
-- **🤖 AI 智能协同**：深度集成 AI 润色与纠错功能，支持流式输出体验，可自由接入 DeepSeek、OpenAI 等主流大模型。
+- **🤖 AI 智能协同**：深度集成 AI 润色、纠错与**一键格式化**功能，支持流式输出体验，可自由接入 DeepSeek、OpenAI 等主流大模型。
 - **📝 沉浸式 Markdown 体验**：采用分级分屏布局，左侧高效输入，右侧实时渲染，支持标准语法与代码高亮。
-- **� 现代化文件夹体系**：
+- **📁 现代化文件夹体系**：
     - **结构化管理**：基于关系型数据库的文件夹系统，支持创建空文件夹，分类清晰。
     - **无感重命名**：侧边栏**内联编辑**，无需多余弹窗，回车即刻保存。
     - **上下文感知**：智能识别当前选中的目录上下文，新笔记自动归类，告别手动调整。
 - **🖱️ 丝滑交互流程**：
     - **自由拖拽**：支持 **Drag & Drop** 原生交互，单手即可完成笔记跨目录搬运，无需多余确认流程。
     - **隐形自动保存**：标题与内容双向静默自动保存，交互逻辑高度精简，专注创作不再分心。
-- **�️ 增强型批量工具**：
+- **🛠️ 增强型批量工具**：
     - **高效整理**：一键开启批量模式，支持跨笔记多选与文件夹级联操作。
     - **快速导出/清理**：支持多选导出为 ZIP（保留完整目录结构）或一键安全销毁。
 - **🚀 零门槛私有化部署**：基于 Docker Compose 编排，环境一键拉起，多阶段构建极致缩小镜像体积。
@@ -133,27 +133,27 @@ docker compose up -d --build
 
 如果你想修改代码并进行调试，可以分别运行前后端：
 
-1. **启动数据库:**
-   ```bash
-   docker compose up mysql -d
-   ```
+1.  **启动数据库:**
+    ```bash
+    docker compose up mysql -d
+    ```
 
-2. **启动后端 (Go):**
-   ```bash
-   cd backend
-   # 配置本地连接的环境变量
-   export DB_HOST=localhost
-   export AI_API_KEY=your_key
-   go run main.go
-   ```
+2.  **启动后端 (Go):**
+    ```bash
+    cd backend
+    # 配置本地连接的环境变量
+    export DB_HOST=localhost
+    export AI_API_KEY=your_key
+    go run main.go
+    ```
 
-3. **启动前端 (React):**
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-   访问 http://localhost:5173 进行开发。
+3.  **启动前端 (React):**
+    ```bash
+    cd frontend
+    npm install
+    npm run dev
+    ```
+    访问 http://localhost:5173 进行开发。
 
 ---
 
@@ -167,16 +167,16 @@ Most importantly, it is **self-hosted**—your data stays in your hands, not on 
 ### ✨ Key Features
 
 - **🔒 Privacy First**: All notes are stored locally in a private **MySQL** database. No cloud syncing, ensuring total data ownership.
-- **🤖 AI Synergy**: Deeply integrated AI polishing with streaming responses. Compatible with OpenAI, DeepSeek, and custom AI endpoints.
+- **🤖 AI Synergy**: Deeply integrated AI polishing and **one-click formatting** with streaming responses. Compatible with OpenAI, DeepSeek, and custom AI endpoints.
 - **📝 Immersive Markdown**: High-performance editor with real-time synchronized preview and standard syntax support.
-- **� Modern Folder Management**:
+- **📁 Modern Folder Management**:
     - **Structured Organization**: Relational-backed folder system with support for empty folders and organizational hierarchies.
     - **Inline Renaming**: Intuitive sidebar editing without intrusive popups. Save changes instantly with a single Enter.
     - **Contextual Creation**: Smart context detection. New notes automatically inherit the currently active folder.
 - **🖱️ Seamless UX Flow**:
     - **D&D Organization**: Native **Drag & Drop** support for effortless note relocation between folders.
     - **Invisible Auto-Save**: Silent, debounced saving for both titles and content. No manual save buttons or annoying success alerts.
-- **�️ Pro Batch Operations**:
+- **🛠️ Pro Batch Operations**:
     - **Mass Management**: Dedicated batch mode for selecting multiple notes or entire folders.
     - **Export & Cleanup**: Bulk export notes to ZIP (preserving structure) or perform cascading deletions.
 - **🚀 Cloud-Native Deployment**: One-click setup via Docker Compose. Multi-stage builds for optimized container performance.

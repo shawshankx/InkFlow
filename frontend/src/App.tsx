@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   Sparkles, Save, FileText, Plus, Trash2,
   Download, Upload, CheckSquare, Square, X,
-  RotateCcw, Folder, FolderOpen, ChevronRight, ChevronDown, Edit2 // <--- 新增 Edit2 图标
+  RotateCcw, Folder, FolderOpen, ChevronRight, ChevronDown, Edit2, Wand2
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -234,25 +234,25 @@ function App() {
 
   // API: AI 润色 (保持不变)
   const handlePolish = async () => {
+    await callAIStreaming('/api/ai/polish');
+  };
+
+  const handleFormat = async () => {
+    await callAIStreaming('/api/ai/format');
+  };
+
+  const callAIStreaming = async (endpoint: string) => {
     if (!content.trim()) { alert("请先输入一些内容"); return; }
     setHistoryContent(content);
     setLoading(true);
     try {
-      const response = await fetch('/api/ai/polish', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
       });
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        const data = await response.json();
-        const text = data.content || data.message || (data.choices && data.choices[0].message.content) || "";
-        setContent(text);
-        return;
-      }
 
       setContent("");
       if (!response.body) return;
@@ -705,6 +705,9 @@ function App() {
 
           <button onClick={handlePolish} disabled={loading || isBatchMode} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 16px', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', opacity: (loading || isBatchMode) ? 0.5 : 1 }}>
             <Sparkles size={16} /> {loading ? '润色中' : 'AI 润色'}
+          </button>
+          <button onClick={handleFormat} disabled={loading || isBatchMode} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 16px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', opacity: (loading || isBatchMode) ? 0.5 : 1 }}>
+            <Wand2 size={16} /> {loading ? '格式化中' : 'AI 格式化'}
           </button>
           <button onClick={() => handleSave()} disabled={isBatchMode} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 16px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', opacity: isBatchMode ? 0.5 : 1 }}><Save size={16} /> 保存</button>
           {/* 保存状态指示器 */}

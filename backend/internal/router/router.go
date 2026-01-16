@@ -30,6 +30,7 @@ func SetupRouter(s *dao.NoteDAO, staticFiles embed.FS) *gin.Engine {
 		api.GET("/folders", noteHandler.ListFolders)
 		api.DELETE("/folders", noteHandler.DeleteFolder)
 		api.POST("/ai/polish", aiHandler.Polish)
+		api.POST("/ai/format", aiHandler.Format)
 	}
 
 	// 3. 静态资源托管
