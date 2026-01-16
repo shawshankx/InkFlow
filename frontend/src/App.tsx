@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   Sparkles, Save, FileText, Plus, Trash2,
   Download, Upload, CheckSquare, Square, X,
-  RotateCcw, Folder, FolderOpen, ChevronRight, ChevronDown // <--- 新增图标
+  RotateCcw, Folder, FolderOpen, ChevronRight, ChevronDown, Edit2 // <--- 新增 Edit2 图标
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -18,13 +18,17 @@ function App() {
   const [content, setContent] = useState("# 新建笔记\n\n开始你的创作...");
   const [title, setTitle] = useState("未命名笔记");
   const [folder, setFolder] = useState(""); // 🔥 当前笔记的文件夹状态
+
   // 用于追踪加载时的原始位置，以便判断移动/重命名
   const [originalLocation, setOriginalLocation] = useState<{ title: string, folder: string } | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"Saved" | "Saving..." | "Unsaved" | "">("");
 
   // 🔥 列表状态改为对象数组
+  // 🔥 列表状态改为对象数组
   const [notesList, setNotesList] = useState<NoteItem[]>([]);
+  const [foldersList, setFoldersList] = useState<string[]>([]); // 🔥 文件夹列表
 
   // 🔥 折叠状态：记录哪些文件夹是展开的 (默认展开根目录)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['']));
@@ -36,22 +40,59 @@ function App() {
   // === 撤回状态 ===
   const [historyContent, setHistoryContent] = useState<string | null>(null);
 
+  // === 文件夹内联重命名状态 ===
+  const [editingFolder, setEditingFolder] = useState<string | null>(null); // 当前正在编辑的文件夹名
+  const [tempFolderName, setTempFolderName] = useState(""); // 编辑框中的临时值
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchNotesList();
   }, []);
 
+  // 🔥 自动保存逻辑
+  useEffect(() => {
+    // 只有当有内容变更，且不是新建的空笔记时才自动保存
+    // 防止加载笔记时触发
+    if (content === "# 新建笔记\n\n开始你的创作..." || !title) return;
+
+    // 如果刚刚加载完笔记，不要马上保存（避免覆盖）
+    // 简单的判断：如果内容和 originalLocation 里的内容不同... 但我们不存 content 在 location 里
+    // 我们用一个 debounced effect
+
+    setSaveStatus("Unsaved");
+
+    const timer = setTimeout(() => {
+      // 只要 title 存在，就尝试保存 (内容或标题变化都触发)
+      if (title) {
+        setSaveStatus("Saving...");
+        // true = autoSave mode
+        handleSave(undefined, undefined, undefined, true);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [content, title]); // 🔥 监听 title 变化
+
   // --- 辅助函数：计算分组 ---
   const groupedNotes = useMemo(() => {
     const groups: Record<string, NoteItem[]> = {};
+
+    // 1. 初始化所有文件夹为空数组 (确保空文件夹也能显示)
+    foldersList.forEach(f => {
+      groups[f] = [];
+    });
+    // 确保根目录存在
+    if (!groups[""]) groups[""] = [];
+
+    // 2. 填充笔记
     notesList.forEach(note => {
-      const f = note.folder || ""; // 空字符串代表根目录
+      const f = note.folder || "";
       if (!groups[f]) groups[f] = [];
       groups[f].push(note);
     });
     return groups;
-  }, [notesList]);
+  }, [notesList, foldersList]);
 
   const toggleFolder = (folderName: string) => {
     const newSet = new Set(expandedFolders);
@@ -62,13 +103,20 @@ function App() {
 
   // --- API 操作 ---
 
-  // API: 获取列表
+  // API: 获取列表 (同时获取通过 Notes 关联的文件夹和 空文件夹)
   const fetchNotesList = async () => {
     try {
-      const res = await fetch('/api/notes');
-      const data = await res.json();
-      // data 应该是 [{title: "A", folder: "Work"}, ...]
-      setNotesList(data || []);
+      // 并行请求
+      const [resNotes, resFolders] = await Promise.all([
+        fetch('/api/notes'),
+        fetch('/api/folders')
+      ]);
+
+      const notesData = await resNotes.json();
+      const foldersData = await resFolders.json();
+
+      setNotesList(notesData || []);
+      setFoldersList(foldersData || []);
     } catch (e) {
       console.error("加载列表失败", e);
     }
@@ -95,39 +143,36 @@ function App() {
   };
 
   // API: 保存笔记
-  const handleSave = async (customTitle?: string, customContent?: string, customFolder?: string) => {
+  const handleSave = async (customTitle?: string, customContent?: string, customFolder?: string, isAutoSave = false) => {
     const targetTitle = customTitle || title;
     const targetFolder = customFolder !== undefined ? customFolder : folder;
     const targetContent = customContent !== undefined ? customContent : content;
 
     if (!targetTitle.trim()) { alert("请输入标题"); return; }
 
-    // 🔥 检测是否需要移动 (Folder 发生变化，且不是新建笔记)
-    if (originalLocation && targetFolder !== originalLocation.folder) {
-      if (targetTitle !== originalLocation.title) {
-        // 如果标题也变了，暂时先不支持同时移动+重命名（因为重命名本质是新建），提示用户分步操作
-        // 或者：先移动，再保存为新标题（会产生新文件）
-        // 这里我们只处理移动
-      }
-
+    // 🔥 检测是否需要移动或重命名 (Folder 或 Title 发生变化，且不是新建笔记)
+    // 用户要求：自动保存也要支持重命名
+    if (originalLocation && (targetFolder !== originalLocation.folder || targetTitle !== originalLocation.title)) {
       try {
         const moveRes = await fetch('/api/notes/move', {
           method: 'POST',
           body: JSON.stringify({
-            title: originalLocation.title, // 使用原始标题去查找
+            title: originalLocation.title, // 原标题
+            newTitle: targetTitle,         // 新标题
             oldFolder: originalLocation.folder,
             newFolder: targetFolder
           })
         });
         if (!moveRes.ok) {
           const err = await moveRes.json();
-          alert("❌ 移动失败: " + (err.error || "未知错误"));
+          alert("❌ 重命名/移动失败: " + (err.error || "未知错误"));
+          // 如果重命名失败，最好不要继续保存内容生成新文件，而是阻断
           return;
         }
-        // 移动成功后，更新 originalLocation，这样后续的 Save 就是针对新位置
-        setOriginalLocation({ title: originalLocation.title, folder: targetFolder });
+        // 更新成功后，更新 originalLocation
+        setOriginalLocation({ title: targetTitle, folder: targetFolder });
       } catch (e) {
-        alert("❌ 移动请求出错");
+        alert("❌ 请求出错");
         return;
       }
     }
@@ -144,11 +189,13 @@ function App() {
 
     if (!customTitle) {
       if (res.ok) {
-        alert("✅ 保存成功!");
+        if (!isAutoSave) alert("✅ 保存成功!");
+        setSaveStatus("Saved");
         setHistoryContent(null);
         fetchNotesList(); // 刷新列表以更新文件夹结构
       } else {
-        alert("❌ 保存失败");
+        setSaveStatus("Unsaved");
+        if (!isAutoSave) alert("❌ 保存失败");
       }
     }
   };
@@ -323,25 +370,79 @@ function App() {
     event.target.value = '';
   };
 
-  // 🔥 新建文件夹 (其实是创建该文件夹下的第一个笔记)
+  // 🔥 新建文件夹 (直接创建空文件夹)
   const handleNewFolder = async () => {
     const name = prompt("请输入新文件夹名称:");
-    if (!name) return; // 用户点了取消
+    if (!name) return;
 
-    // 1. 生成一个临时的标题
-    const tempTitle = "新笔记-" + Date.now();
-    const tempContent = `# ${name}\n这是该文件夹下的第一个笔记`;
-
-    // 2. 更新前端状态 (让输入框立刻变更为新文件夹)
-    handleNew();
-    setFolder(name);
-    setTitle(tempTitle);
-    setContent(tempContent);
-
-    // 3. 🔥 关键：立即调用保存接口！
-    // 只有保存成功，数据库里有了这条记录，文件夹才会真正创建成功
-    await handleSave(tempTitle, tempContent, name);
+    try {
+      const res = await fetch('/api/folders', {
+        method: 'POST',
+        body: JSON.stringify({ name })
+      });
+      if (res.ok) {
+        setFolder(name);
+        fetchNotesList(); // 刷新列表
+      } else {
+        alert("创建失败");
+      }
+    } catch (e) {
+      alert("请求出错");
+    }
   }
+
+  // 🔥 开始重命名 (点击编辑图标触发)
+  const startRenameFolder = (oldName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingFolder(oldName);
+    setTempFolderName(oldName);
+  };
+
+  // 确认重命名 (回车或失去焦点)
+  const confirmRenameFolder = async () => {
+    if (!editingFolder) return;
+    const oldName = editingFolder;
+    const newName = tempFolderName.trim();
+
+    // 如果没变或为空，取消编辑
+    if (!newName || newName === oldName) {
+      setEditingFolder(null);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/folders/rename', {
+        method: 'POST',
+        body: JSON.stringify({ oldName, newName })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert("❌ 重命名失败: " + (err.error || "未知错"));
+        // 保持编辑状态以便修正
+        return;
+      }
+
+      // 更新成功
+      setEditingFolder(null);
+
+      // 更新当前选中的文件夹状态
+      if (folder === oldName) {
+        setFolder(newName);
+        if (originalLocation && originalLocation.folder === oldName) {
+          setOriginalLocation({ ...originalLocation, folder: newName });
+        }
+      }
+      fetchNotesList();
+    } catch (e) {
+      alert("❌ 请求出错");
+    }
+  };
+
+  // 取消重命名 (ESC)
+  const cancelRenameFolder = () => {
+    setEditingFolder(null);
+    setTempFolderName("");
+  };
 
   const handleNew = () => {
     setTitle("新笔记-" + Date.now());
@@ -454,11 +555,41 @@ function App() {
                   onClick={() => toggleFolder(groupName)}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, groupName)}
-                  style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '8px', color: '#4b5563', fontWeight: '600', fontSize: '14px' }}
+                  style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '8px', color: '#4b5563', fontWeight: '600', fontSize: '14px', justifyContent: 'space-between' }}
                 >
-                  {isExpanded ? <ChevronDown size={14} style={{ marginRight: 5 }} /> : <ChevronRight size={14} style={{ marginRight: 5 }} />}
-                  <Folder size={16} style={{ marginRight: 6, fill: '#fbbf24', stroke: '#d97706' }} />
-                  {groupName}
+                  <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                    {isExpanded ? <ChevronDown size={14} style={{ marginRight: 5 }} /> : <ChevronRight size={14} style={{ marginRight: 5 }} />}
+                    <Folder size={16} style={{ marginRight: 6, fill: '#fbbf24', stroke: '#d97706' }} />
+
+                    {/* 内联编辑输入框 vs 文本显示 */}
+                    {editingFolder === groupName ? (
+                      <input
+                        autoFocus
+                        value={tempFolderName}
+                        onClick={(e) => e.stopPropagation()} // 防止触发折叠
+                        onChange={(e) => setTempFolderName(e.target.value)}
+                        onBlur={confirmRenameFolder}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') confirmRenameFolder();
+                          if (e.key === 'Escape') cancelRenameFolder();
+                        }}
+                        style={{ border: '1px solid #3b82f6', outline: 'none', borderRadius: '4px', padding: '2px 4px', fontSize: '14px', width: '100%' }}
+                      />
+                    ) : (
+                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{groupName}</span>
+                    )}
+                  </div>
+
+                  {/* 重命名按钮 (只有不在编辑时显示) */}
+                  {editingFolder !== groupName && (
+                    <button
+                      onClick={(e) => startRenameFolder(groupName, e)}
+                      title="重命名文件夹"
+                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af', padding: '2px', display: 'flex' }}
+                    >
+                      <Edit2 size={12} />
+                    </button>
+                  )}
                 </div>
 
                 {/* 文件夹下的笔记 */}
@@ -471,8 +602,6 @@ function App() {
             );
           })}
 
-          {/* 2. 渲染根目录 (未分类) 的笔记 */}
-          {/* 将整个根目录区域作为一个 Drop Zone */}
           {/* 2. 渲染根目录 (未分类) 的笔记 */}
           {/* 将整个根目录区域作为一个 Drop Zone */}
           <div
@@ -497,18 +626,6 @@ function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '15px 20px', background: 'white', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: '10px', alignItems: 'center' }}>
 
-          {/* 🔥 文件夹输入框 (用于移动笔记) */}
-          <div style={{ display: 'flex', alignItems: 'center', background: '#f3f4f6', padding: '0 10px', borderRadius: '6px', height: '40px' }}>
-            <Folder size={16} color="#666" />
-            <input
-              value={folder}
-              onChange={e => setFolder(e.target.value)}
-              placeholder="文件夹..."
-              disabled={isBatchMode}
-              style={{ width: '80px', border: 'none', background: 'transparent', outline: 'none', marginLeft: '5px', fontSize: '14px', color: '#4b5563' }}
-              title="输入文件夹名称，保存即可移动"
-            />
-          </div>
 
           <input value={title} onChange={e => setTitle(e.target.value)} placeholder="标题..." disabled={isBatchMode} style={{ fontSize: '20px', border: 'none', outline: 'none', fontWeight: 'bold', flex: 1, color: isBatchMode ? '#999' : '#000' }} />
 
@@ -526,6 +643,8 @@ function App() {
             <Sparkles size={16} /> {loading ? '润色中' : 'AI 润色'}
           </button>
           <button onClick={() => handleSave()} disabled={isBatchMode} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 16px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', opacity: isBatchMode ? 0.5 : 1 }}><Save size={16} /> 保存</button>
+          {/* 保存状态指示器 */}
+          <span style={{ fontSize: '12px', color: '#9ca3af', minWidth: '60px', textAlign: 'right' }}>{saveStatus}</span>
           <button onClick={handleDelete} disabled={isBatchMode} title="删除" style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 16px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', opacity: isBatchMode ? 0.5 : 1 }}><Trash2 size={16} /></button>
         </div>
 

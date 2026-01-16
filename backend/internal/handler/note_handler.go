@@ -89,13 +89,15 @@ func (h *NoteHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
-// Move 移动笔记
+// Move 移动或重命名笔记
 func (h *NoteHandler) Move(c *gin.Context) {
 	var req struct {
-		Title     string `json:"title"`
+		Title     string `json:"title"`      // 原标题
+		NewTitle  string `json:"newTitle"`   // 新标题 (可选)
 		OldFolder string `json:"oldFolder"`
-		NewFolder string `json:"newFolder"`
+		NewFolder string `json:"newFolder"`  // 新文件夹
 	}
+
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
@@ -106,9 +108,60 @@ func (h *NoteHandler) Move(c *gin.Context) {
 		return
 	}
 
-	if err := h.Store.MoveNote(req.Title, req.OldFolder, req.NewFolder); err != nil {
+	// 如果 NewTitle 为空，则认为不重命名，保持原标题
+	targetTitle := req.NewTitle
+	if targetTitle == "" {
+		targetTitle = req.Title
+	}
+
+	if err := h.Store.UpdateNoteMeta(req.Title, req.OldFolder, targetTitle, req.NewFolder); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "moved"})
+	c.JSON(http.StatusOK, gin.H{"status": "moved/renamed", "newTitle": targetTitle, "newFolder": req.NewFolder})
+}
+
+// RenameFolder 重命名文件夹
+func (h *NoteHandler) RenameFolder(c *gin.Context) {
+	var req struct {
+		OldName string `json:"oldName"`
+		NewName string `json:"newName"`
+	}
+
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	if err := h.Store.RenameFolder(req.OldName, req.NewName); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "folder renamed"})
+}
+
+// CreateFolder 创建空文件夹
+func (h *NoteHandler) CreateFolder(c *gin.Context) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	if err := h.Store.CreateFolder(req.Name); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "created"})
+}
+
+// ListFolders 获取文件夹列表
+func (h *NoteHandler) ListFolders(c *gin.Context) {
+	folders, err := h.Store.ListFolders()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, folders)
 }

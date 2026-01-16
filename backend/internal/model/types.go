@@ -10,24 +10,30 @@ import (
 // 1. 数据库模型 (DB Schema)
 // ==============================
 
+// Folder 文件夹模型
+type Folder struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	Name      string         `gorm:"uniqueIndex;size:100;not null" json:"name"`
+	Notes     []Note         `json:"-"`
+}
+
 type Note struct {
-	// 使用 gorm.Model 会自动包含 ID, CreatedAt, UpdatedAt, DeletedAt (软删除)
-	// 如果您之前没有使用 gorm.Model，为了兼容旧数据，我们可以手动定义：
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"` // 支持软删除
-
-	// 🔥 核心修改：联合唯一索引 (uniqueIndex:idx_title_folder)
-	// 也就是：(Title + Folder) 必须唯一，允许不同文件夹下有同名笔记
-	Title string `gorm:"uniqueIndex:idx_title_folder;size:191" json:"title"`
-
-	// 🔥 新增 Folder 字段
-	// default:'' 表示默认是空字符串（即根目录）
-	Folder string `gorm:"uniqueIndex:idx_title_folder;size:100;default:''" json:"folder"`
-
+	Title     string         `gorm:"uniqueIndex:idx_title_folder_id;size:191" json:"title"`
+	
+	// Refactor: Use FolderID foreign key
+	FolderID  uint           `gorm:"uniqueIndex:idx_title_folder_id;default:null" json:"folder_id"`
+	Folder    *Folder        `json:"folder,omitempty"` // Association
+	
+	// Legacy: We don't map the string column anymore, but we need to handle migration manually
+	
 	// 内容使用 text 类型，防止过长截断
-	Content string `gorm:"type:longtext" json:"content"`
+	Content   string         `gorm:"type:longtext" json:"content"`
 }
 
 // ==============================

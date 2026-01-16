@@ -40,6 +40,9 @@ func main() {
 		api.POST("/notes", noteHandler.Save)
 		api.DELETE("/notes", noteHandler.Delete)
 		api.POST("/notes/move", noteHandler.Move) // 🔥 新增移动接口
+		api.POST("/folders/rename", noteHandler.RenameFolder) // 🔥 新增文件夹重命名接口
+		api.POST("/folders", noteHandler.CreateFolder)       // 🔥 新增创建文件夹接口
+		api.GET("/folders", noteHandler.ListFolders)         // 🔥 新增获取文件夹列表
 		api.POST("/ai/polish", aiHandler.Polish)
 	}
 
